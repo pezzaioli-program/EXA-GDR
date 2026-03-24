@@ -1,4 +1,4 @@
-"""
+  """
 mappa/map.py — Editor mappa esagonale con chunk system
 =======================================================
 Orientamento: pointy-top  |  Coordinate: assiali (q, r)
@@ -473,11 +473,32 @@ class PannelloLaterale:
             tl = self.font_voce.render(t(chiave), True, (120,120,140))
             surface.blit(tl, (self.MARGINE, clip.top + 8))
 
-        # Pulsante Genera in fondo
-        y_btn = self.altezza - 50
+        # Due pulsanti in fondo: Genera casuale e Crea manuale
+        y_btn = self.altezza - 80
         btn_gen = pygame.Rect(self.MARGINE, y_btn,
                               self.larghezza - self.MARGINE*2, 28)
         pygame.draw.rect(surface, (70, 100, 70), btn_gen, border_radius=4)
+        chiave_btn = "genera_npc" if tipo == "npc" else "genera_nemico"
+        tg = self.font_voce.render(t(chiave_btn), True, COLORE_TESTO)
+        surface.blit(tg, (btn_gen.centerx - tg.get_width()//2,
+                           btn_gen.centery - tg.get_height()//2))
+
+        y_btn2 = self.altezza - 46
+        btn_crea = pygame.Rect(self.MARGINE, y_btn2,
+                               self.larghezza - self.MARGINE*2, 28)
+        pygame.draw.rect(surface, (60, 60, 100), btn_crea, border_radius=4)
+        lbl_crea = "➕ Crea NPC" if tipo == "npc" else "➕ Crea Nemico"
+        tc = self.font_voce.render(lbl_crea, True, COLORE_TESTO)
+        surface.blit(tc, (btn_crea.centerx - tc.get_width()//2,
+                           btn_crea.centery - tc.get_height()//2))
+
+        if tipo == "npc":
+            self._rect_btn_genera_npc = btn_gen
+            self._rect_btn_crea_npc   = btn_crea
+        else:
+            self._rect_btn_genera_nem = btn_gen
+            self._rect_btn_crea_nem   = btn_crea
+
         chiave_btn = "genera_npc" if tipo == "npc" else "genera_nemico"
         tg = self.font_voce.render(t(chiave_btn), True, COLORE_TESTO)
         surface.blit(tg, (btn_gen.centerx - tg.get_width()//2,
@@ -535,6 +556,19 @@ class PannelloLaterale:
                     self._npc_selezionato = i
                     return True
 
+            btn_crea = getattr(self, "_rect_btn_crea_npc", None)
+            if btn_crea and btn_crea.collidepoint(mx, my):
+                # Scheda NPC vuota da compilare
+                vuoto = {
+                    "tipo": "npc", "nome": "Nuovo NPC", "razza": "Umano",
+                    "classe": "Mercante", "pf": 10, "pf_max": 10, "ca": 10,
+                    "statistiche": {"for":10,"des":10,"cos":10,"int":10,"sag":10,"car":10},
+                    "colore": (150, 150, 200),
+                }
+                self.lista_npc.append(vuoto)
+                self._npc_selezionato = len(self.lista_npc) - 1
+                return "apri_scheda_npc"
+      
         elif self.modalita == "nemico":
             btn = getattr(self, "_rect_btn_genera_nem", None)
             if btn and btn.collidepoint(mx, my):
@@ -547,6 +581,19 @@ class PannelloLaterale:
                     self._nem_selezionato = i
                     return True
 
+            btn_crea = getattr(self, "_rect_btn_crea_nem", None)
+            if btn_crea and btn_crea.collidepoint(mx, my):
+                vuoto = {
+                    "tipo": "nemico", "nome": "Nuovo Nemico", "razza": "Goblin",
+                     "classe": "Goblin", "difficolta": "medio",
+                    "pf": 15, "pf_max": 15, "ca": 12,
+                    "statistiche": {"for":10,"des":10,"cos":10,"int":8,"sag":8,"car":6},
+                    "colore": (200, 80, 80),
+                }
+                self.lista_nemici.append(vuoto)
+                self._nem_selezionato = len(self.lista_nemici) - 1
+                return "apri_scheda_nem"
+              
         if self._rect_rot_giu and self._rect_rot_giu.collidepoint(mx, my):
             self.rotazione = (self.rotazione - 1) % 6
             return True

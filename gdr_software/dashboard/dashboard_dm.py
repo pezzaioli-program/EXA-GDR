@@ -12,6 +12,7 @@ from PyQt6.QtGui import QFont
 
 from auth.sessione_utente import utente_corrente, ha_abbonamento
 from config import APP_TITOLO, FINESTRA_LARGHEZZA, FINESTRA_ALTEZZA
+from lingua.gestore import t
 
 
 class DashboardDM(QMainWindow):
@@ -34,21 +35,21 @@ class DashboardDM(QMainWindow):
 
         # Header
         header = QHBoxLayout()
-        titolo = QLabel(f"Benvenuto, {utente['username']}")
+        titolo = QLabel(t("benvenuto").format(u=utente['username']))
         titolo.setFont(QFont("Arial", 20, QFont.Weight.Bold))
         header.addWidget(titolo)
         header.addStretch()
 
         abbonamento = ha_abbonamento()
-        stato_abb = QLabel("✓ Abbonamento attivo" if abbonamento else "✗ Abbonamento non attivo")
+        stato_abb = QLabel(t("abbonamento_attivo") if abbonamento else t("abbonamento_non_attivo"))
         stato_abb.setStyleSheet("color: #80ff80;" if abbonamento else "color: #ff8080;")
         header.addWidget(stato_abb)
 
-        btn_shop = QPushButton("🛒  Shop DM")
+        btn_shop = QPushButton(t("shop_dm"))
         btn_shop.clicked.connect(self._apri_shop)
         header.addWidget(btn_shop)
 
-        btn_logout = QPushButton("Esci")
+        btn_logout = QPushButton(t("esci"))
         btn_logout.setFixedWidth(80)
         btn_logout.clicked.connect(self.logout_richiesto.emit)
         header.addWidget(btn_logout)
@@ -59,8 +60,7 @@ class DashboardDM(QMainWindow):
         sep.setStyleSheet("color: #555570;")
         layout.addWidget(sep)
 
-        # Lista mondi sempre visibile
-        lbl = QLabel("🌍  I miei Mondi")
+        lbl = QLabel(t("i_miei_mondi"))
         lbl.setFont(QFont("Arial", 13, QFont.Weight.Bold))
         layout.addWidget(lbl)
 
@@ -77,12 +77,12 @@ class DashboardDM(QMainWindow):
         riga_btn = QHBoxLayout()
         riga_btn.setSpacing(10)
 
-        btn_nuovo = QPushButton("➕  Nuovo mondo")
+        btn_nuovo = QPushButton(t("nuovo_mondo"))
         btn_nuovo.setMinimumHeight(40)
         btn_nuovo.clicked.connect(self._nuovo_mondo)
         riga_btn.addWidget(btn_nuovo)
 
-        btn_modifica = QPushButton("✏️  Modifica selezionato")
+        btn_modifica = QPushButton(t("modifica_selezionato"))
         btn_modifica.setMinimumHeight(40)
         btn_modifica.clicked.connect(self._modifica_mondo_selezionato)
         riga_btn.addWidget(btn_modifica)
@@ -97,7 +97,7 @@ class DashboardDM(QMainWindow):
         self._lista_mondi.clear()
         mondi = GestoreMondo.lista()
         if not mondi:
-            item = QListWidgetItem("Nessun mondo ancora — clicca '➕ Nuovo mondo' per iniziare")
+            item = QListWidgetItem(t("nessun_mondo"))
             item.setForeground(Qt.GlobalColor.gray)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             self._lista_mondi.addItem(item)
@@ -121,8 +121,7 @@ class DashboardDM(QMainWindow):
         item = self._lista_mondi.currentItem()
         mondo_id = item.data(Qt.ItemDataRole.UserRole) if item else None
         if not mondo_id:
-            QMessageBox.information(self, "Nessuna selezione",
-                                    "Seleziona un mondo dalla lista.")
+            QMessageBox.information(self, t("errore"), t("seleziona_mondo"))
             return
         self._apri_mondo(mondo_id)
 

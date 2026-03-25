@@ -12,6 +12,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 
 from shop.acquisti import acquista, possiede, lista_posseduti
+from lingua.gestore import t
 
 CATALOGO_ASSET_MAPPA = [
     {"id": "asset_drago",       "nome": "Token Drago",        "prezzo": "0.99€",
@@ -169,7 +170,7 @@ class ShopDM(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Shop DM — Asset, Mappe e Manuali")
+        self.setWindowTitle(t("shop_titolo"))
         self.setMinimumSize(760, 580)
         self._costruisci_ui()
 
@@ -194,10 +195,10 @@ class ShopDM(QDialog):
         tabs.addTab(self._crea_tab_mappe_prefab(), "📜 Mappe Prefab")
         tabs.addTab(self._crea_tab_griglia(CATALOGO_MANUALI, "manuale"),
                     "📚 Manuali")
-        tabs.addTab(self._crea_tab_posseduti(), "📦 I miei acquisti")
+        tabs.addTab(self._crea_tab_posseduti(), t("i_miei_acquisti"))
         layout.addWidget(tabs)
 
-        btn_chiudi = QPushButton("Chiudi")
+        btn_chiudi = QPushButton(t("chiudi"))
         btn_chiudi.clicked.connect(self.accept)
         layout.addWidget(btn_chiudi, alignment=Qt.AlignmentFlag.AlignRight)
 
@@ -252,10 +253,10 @@ class ShopDM(QDialog):
             btn.setEnabled(False)
             btn.setStyleSheet("color: #80ff80;")
         elif prezzo_str == "Gratis":
-            btn = QPushButton("Ottieni gratis")
+            btn = QPushButton(t("acquista"))
             btn.clicked.connect(lambda checked, it=item, t=tipo: self._acquista(it, t))
         else:
-            btn = QPushButton(f"Acquista — {prezzo_str}")
+            btn = QPushButton(f"{t('acquista')} — {prezzo_str}")
             btn.clicked.connect(lambda checked, it=item, t=tipo: self._acquista(it, t))
 
         layout.addWidget(btn)
@@ -333,12 +334,12 @@ class ShopDM(QDialog):
 
         if gia:
             # Già acquistata: mostra solo il pulsante "Carica in un mondo"
-            btn_acquista = QPushButton("✓ Già acquistata")
+            btn_acquista = QPushButton(t("gia_acquistato"))
             btn_acquista.setEnabled(False)
             btn_acquista.setStyleSheet("color: #80ff80;")
             layout.addWidget(btn_acquista)
 
-            btn_carica = QPushButton("📥  Carica in un mondo")
+            btn_carica = QPushButton("📥  " + t("carica_in_mondo"))
             btn_carica.clicked.connect(
                 lambda checked, it=item: self._carica_prefab_in_mondo(it))
             layout.addWidget(btn_carica)
@@ -393,7 +394,7 @@ class ShopDM(QDialog):
         scelta, ok = QInputDialog.getItem(
             self,
             "Scegli il mondo",
-            f"In quale mondo vuoi caricare '{item['nome']}'?",
+            t("scegli_mondo").format(n=item['nome']),
             nomi_mondi,
             editable=False
         )
@@ -449,7 +450,7 @@ class ShopDM(QDialog):
     def _aggiorna_testo_posseduti(self):
         posseduti = lista_posseduti()
         if not posseduti:
-            self._testo_posseduti.setPlainText("Nessun acquisto ancora.")
+            self._testo_posseduti.setPlainText(t("nessun_acquisto"))
             return
         righe = []
         for tipo, label in [("oggetto_mappa", "Asset Mappa"),

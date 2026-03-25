@@ -104,7 +104,7 @@ def scegli(codice):
   btn_ok.clicked.connect(dialog.accept)
   layout.addWidget(btn_ok)
  
-    dialog.exec()
+  dialog.exec()
  
   codice = lingua_scelta[0]
   # Salva la preferenza nel DB per i prossimi avvii

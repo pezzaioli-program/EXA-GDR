@@ -29,13 +29,90 @@ import os
 # indipendentemente da dove viene lanciato lo script su Windows.
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtWidgets import (QApplication, QMessageBox, QDialog,QVBoxLayout, QLabel, QPushButton, QHBoxLayout)
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 
 from config import APP_TITOLO, APP_VERSIONE
 from database.db import inizializza_db
 from auth.login_window import LoginWindow
 from auth.sessione_utente import utente_corrente, e_dm, logout
+
+def mostra_scelta_lingua() -> str:
+       """
+       Mostra la finestra di scelta lingua al primo avvio.
+       Restituisce "it" o "en" in base alla scelta dell'utente.
+       La scelta viene salvata nel DB per i prossimi avvii.
+       """
+      from database.db import leggi_uno, esegui
+ 
+        # Controlla se c'è già una preferenza salvata nel database
+       riga = leggi_uno("SELECT valore FROM impostazioni WHERE chiave='lingua'")
+       if riga:
+           return riga["valore"]   # già scelta in precedenza, usa quella
+ 
+       # Prima volta: mostra la finestra di scelta
+       dialog = QDialog()
+       dialog.setWindowTitle("Language / Lingua")
+       dialog.setFixedSize(360, 220)
+       # Nasconde il pulsante X per non poter chiudere senza scegliere
+       dialog.setWindowFlags(dialog.windowFlags() &
+                              ~Qt.indowType.WindowCloseButtonHint)
+ 
+       layout = QVBoxLayout(dialog)
+       layout.setSpacing(16)
+       layout.setContentsMargins(30, 30, 30, 30)
+ 
+       lbl = QLabel("Scegli la lingua / Choose your language")
+       lbl.setFont(QFont("Arial", 13, QFont.Weight.Bold))
+       lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+       layout.addWidget(lbl)
+ 
+        # Variabile che tiene traccia della lingua selezionata
+        # Usiamo una lista perché le lambda non possono modificare
+        # variabili semplici dall'esterno (limitazione Python)
+       lingua_scelta = ["it"]
+ 
+       riga_btn = QHBoxLayout()
+       riga_btn.setSpacing(12)
+ 
+       btn_it = QPushButton("🇮🇹  Italiano")
+       btn_it.setMinimumHeight(48)
+       btn_it.setFont(QFont("Arial", 13))
+       btn_it.setStyleSheet("background-color: #5a5a90; border-radius: 6px;")
+ 
+       btn_en = QPushButton("🇬🇧  English")
+       btn_en.setMinimumHeight(48)
+       btn_en.setFont(QFont("Arial", 13))
+ 
+def scegli(codice):
+  lingua_scelta[0] = codice
+  if codice == "it":
+    btn_it.setStyleSheet("background-color: #5a5a90; border-radius: 6px;")
+    btn_en.setStyleSheet("")
+  else:
+    btn_en.setStyleSheet("background-color: #5a5a90; border-radius: 6px;")
+    btn_it.setStyleSheet("")
+ 
+  btn_it.clicked.connect(lambda: scegli("it"))
+  btn_en.clicked.connect(lambda: scegli("en"))
+  riga_btn.addWidget(btn_it)
+  riga_btn.addWidget(btn_en)
+  layout.addLayout(riga_btn)
+ 
+  btn_ok = QPushButton("Continua / Continue")
+  btn_ok.setMinimumHeight(36)
+  btn_ok.clicked.connect(dialog.accept)
+  layout.addWidget(btn_ok)
+ 
+    dialog.exec()
+ 
+  codice = lingua_scelta[0]
+  # Salva la preferenza nel DB per i prossimi avvii
+  esegui("INSERT OR REPLACE INTO impostazioni (chiave, valore) VALUES (?,?)",
+    ("lingua", codice))
+  return codice
+
 
 
 def avvia_dashboard(dati_utente: dict, app: QApplication):
@@ -132,6 +209,11 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName(APP_TITOLO)
     app.setApplicationVersion(APP_VERSIONE)
+
+
+  from lingua.gestore import imposta_lingua
+      codice_lingua = mostra_scelta_lingua()
+      imposta_lingua(codice_lingua)
 
     # Font di default per tutta l'applicazione
     font = QFont("Arial", 11)

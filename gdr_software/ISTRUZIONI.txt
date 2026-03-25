@@ -1,0 +1,101 @@
+═══════════════════════════════════════════════════════
+  GDR Map Creator — Istruzioni di installazione
+═══════════════════════════════════════════════════════
+
+STRUTTURA CARTELLE
+──────────────────
+Assicurati che i file siano organizzati così:
+
+gdr_software/
+├── main.py
+├── config.py
+├── requirements.txt
+├── auth/
+├── database/
+├── dashboard/
+├── mappa/          ← map.py va QUI (non nella radice)
+├── sessione/
+├── personaggio/
+├── mondi/
+├── shop/
+├── rete/
+├── manuali/
+├── npc/
+└── asset/
+    ├── terreni/
+    ├── oggetti/
+    ├── personaggi/
+    ├── npc/
+    ├── dadi/
+    ├── ui/
+    └── acquistati/
+
+
+STEP 1 — Installa Python
+────────────────────────
+Scarica Python 3.11 o superiore da: https://python.org
+Durante l'installazione spunta "Add Python to PATH"
+
+Verifica:
+  python --version
+
+
+STEP 2 — Installa le dipendenze
+────────────────────────────────
+Apri il terminale nella cartella del progetto e lancia:
+
+  pip install -r requirements.txt
+
+Dipendenze installate:
+  • PyQt6      — interfaccia grafica finestre
+  • pygame     — mappa esagonale interattiva
+  • bcrypt     — hashing password sicuro
+  • websockets — multiplayer in tempo reale
+
+
+STEP 3 — Crea le cartelle asset
+────────────────────────────────
+Crea manualmente la struttura asset/ se non esiste:
+
+  mkdir -p asset/terreni asset/oggetti asset/personaggi
+  mkdir -p asset/npc asset/dadi asset/ui asset/acquistati
+
+(Su Windows usa Esplora File o il comando md)
+
+
+STEP 4 — Avvia l'applicazione
+──────────────────────────────
+  python main.py
+
+Al primo avvio viene creato automaticamente database/gdr.db
+
+
+COME FUNZIONA
+─────────────
+1. Registra un account Player e uno DM
+2. Accedi come DM → crea un Mondo → aggiungi una Mappa
+3. Usa l'Editor Mappa per disegnare (map.py integrato)
+4. Accedi come Player → apri la scheda personaggio
+5. Il DM avvia una sessione, i Player si connettono via IP
+
+MULTIPLAYER
+───────────
+• Il DM deve avviare la sessione — il server WebSocket
+  si avvia automaticamente sulla porta 8765
+• I Player inseriscono l'IP del DM per connettersi
+• Devono essere sulla stessa rete locale (LAN)
+  oppure il DM deve aprire la porta 8765 sul router
+
+PROBLEMI COMUNI
+───────────────
+"ModuleNotFoundError: No module named 'PyQt6'"
+  → pip install PyQt6
+
+"ModuleNotFoundError: No module named 'mappa'"
+  → Assicurati di lanciare python main.py dalla
+    cartella radice del progetto (dove c'è main.py)
+
+"map.py non trovato"
+  → map.py deve stare in mappa/map.py, non nella radice
+
+═══════════════════════════════════════════════════════

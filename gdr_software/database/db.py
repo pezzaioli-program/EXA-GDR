@@ -264,14 +264,14 @@ def inizializza_db():
         # ── SKIN DADI ─────────────────────────────────────────────────────────
         # Skin attive per ogni tipo di dado, per utente.
         # La colonna skin_json contiene un dizionario {facce: skin_id | null}
+
+        # ── IMPOSTAZIONI ──────────────────────────────────────────────────────
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS skin_dadi (
-                utente_id   INTEGER PRIMARY KEY,
-                skin_json   TEXT NOT NULL DEFAULT '{}',
-                FOREIGN KEY (utente_id) REFERENCES utenti(id)
+            CREATE TABLE IF NOT EXISTS impostazioni (
+                chiave  TEXT PRIMARY KEY,
+                valore  TEXT NOT NULL
             )
         """)
-
         # ── CHUNK MAPPA ───────────────────────────────────────────────────────
         conn.execute("""
             CREATE TABLE IF NOT EXISTS chunk_mappa (

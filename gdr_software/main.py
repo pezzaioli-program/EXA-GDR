@@ -197,8 +197,8 @@ def main():
         # Se il database non si inizializza, non possiamo andare avanti.
         # Mostriamo un errore PRIMA di creare la QApplication non funziona,
         # quindi usiamo print e usciamo.
-        print(f"[ERRORE CRITICO] Impossibile inizializzare il database: {e}")
-        sys.exit(1)   # codice 1 = uscita con errore
+		print(f"[ERRORE CRITICO] Impossibile inizializzare il database: {e}")
+		sys.exit(1)   # codice 1 = uscita con errore
 
     # ── 2. Crea l'applicazione PyQt ──────────────────────────────────────────
     # QApplication deve essere creata UNA SOLA VOLTA prima di qualsiasi

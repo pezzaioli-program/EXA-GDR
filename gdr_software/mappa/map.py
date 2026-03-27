@@ -1,14 +1,15 @@
 """
-mappa/map.py — Editor mappa esagonale con chunk system
-=======================================================
+mappa/map.py — Editor mappa esagonale
+======================================
 Orientamento: pointy-top  |  Coordinate: assiali (q, r)
 
 Funzionalità:
-  - Mappa potenzialmente infinita (chunk 32×32, solo visibili in memoria)
-  - Zoom con rotellina  |  Pan con Ctrl+trascina o tasto centrale
+  - Zoom rotellina | Pan Ctrl+trascina o tasto centrale
+  - Texture PNG dai tileset acquistabili (fallback colore piatto)
   - Menu tasto destro con accesso a sottolivelli
-  - Sottolivelli con pavimenti e oggetti interni
+  - Sottolivelli automatici per oggetti esplorabili
   - Navigazione breadcrumb (World > Castello > Piano terra)
+  - Tab NPC e Nemici nel pannello
   - Pulsante salva + S da tastiera
 """
 
@@ -22,18 +23,23 @@ if _ROOT not in sys.path:
 
 import pygame
 
+from lingua.gestore import t, lingua_corrente
+from npc.generatore import genera_npc, genera_nemico
+from mappa.texture import ottieni_texture_hex
+
 from config import (
     FINESTRA_LARGHEZZA   as LARGHEZZA_FINESTRA,
     FINESTRA_ALTEZZA     as ALTEZZA_FINESTRA,
     HEX_DIMENSIONE       as DIMENSIONE_HEX,
     PANNELLO_LARGHEZZA   as LARGHEZZA_PANNELLO,
-    TERRENI, PAVIMENTI, OGGETTI, OGGETTI_INTERNI,
+    TERRENI, PAVIMENTI, OGGETTI, OGGETTI_INTERNI, OGGETTI_ESPLORABILI,
     COLORE_BORDO_HEX     as COLORE_BORDO,
     COLORE_SELEZIONE_HEX as COLORE_SELEZIONE,
     COLORE_TESTO, COLORE_SFONDO as SFONDO,
     COLORE_PANNELLO, COLORE_VOCE_ATTIVA,
     COLORE_ANTEPRIMA_OK, COLORE_ANTEPRIMA_NO,
 )
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  CLASSE ESAGONO
@@ -43,11 +49,11 @@ class Esagono:
     def __init__(self, q: int, r: int, terreno: str = "vuoto"):
         self.q = q
         self.r = r
-        self.terreno  = terreno
-        self.evento   = None
-        self.visibile = True
-        self.sottolivello_id = None   # id del sottolivello collegato
-        self.oggetti = {"struttura": None, "viabilita": None, "mobile": []}
+        self.terreno         = terreno
+        self.evento          = None
+        self.visibile        = True
+        self.sottolivello_id = None
+        self.oggetti         = {"struttura": None, "viabilita": None, "mobile": []}
 
     def calcola_centro(self, dim: float, ox: int, oy: int):
         x = dim * (math.sqrt(3) * self.q + math.sqrt(3) / 2 * self.r)
@@ -66,21 +72,42 @@ class Esagono:
                 modalita_master=True, palette=None):
         if palette is None:
             palette = TERRENI
-        vertici = self.calcola_vertici(dim, ox, oy)
-        cx, cy  = self.calcola_centro(dim, ox, oy)
+        vertici    = self.calcola_vertici(dim, ox, oy)
+        cx, cy     = self.calcola_centro(dim, ox, oy)
 
         if not modalita_master and not self.visibile:
             pygame.draw.polygon(surface, (15, 15, 15), vertici)
             pygame.draw.polygon(surface, COLORE_BORDO, vertici, 1)
             return
 
-        colore = palette.get(self.terreno, palette.get("vuoto", (50, 50, 50)))
-        pygame.draw.polygon(surface, colore, vertici)
+        # ── Riempimento: texture PNG oppure colore piatto ─────────────────────
+        info_terreno = palette.get(self.terreno, palette.get("vuoto", {}))
+
+        if isinstance(info_terreno, dict):
+            colore           = info_terreno.get("colore", (50, 50, 50))
+            cartella_tileset = info_terreno.get("cartella_tileset")
+        else:
+            colore           = info_terreno
+            cartella_tileset = None
+
+        texture_disegnata = False
+        if cartella_tileset:
+            texture = ottieni_texture_hex(self.terreno, cartella_tileset, dim)
+            if texture is not None:
+                tx = int(cx) - texture.get_width()  // 2
+                ty = int(cy) - texture.get_height() // 2
+                surface.blit(texture, (tx, ty))
+                texture_disegnata = True
+
+        if not texture_disegnata:
+            pygame.draw.polygon(surface, colore, vertici)
+
+        # Bordo
         pygame.draw.polygon(surface,
                             COLORE_SELEZIONE if evidenziato else COLORE_BORDO,
                             vertici, 2)
 
-        # Indicatore sottolivello
+        # Indicatore sottolivello (pallino azzurro)
         if self.sottolivello_id and modalita_master:
             r_dot = max(3, int(dim * 0.15))
             pygame.draw.circle(surface, (100, 200, 255),
@@ -97,9 +124,9 @@ class Esagono:
                 raggio = int(dim * 0.42)
                 pygame.draw.circle(surface, defn["colore"], (int(cx), int(cy)), raggio)
                 pygame.draw.circle(surface, COLORE_BORDO,  (int(cx), int(cy)), raggio, 2)
-                t = font.render(defn["icona"][:2], True, COLORE_TESTO)
-                surface.blit(t, (int(cx) - t.get_width()//2,
-                                  int(cy) - t.get_height()//2))
+                testo = font.render(defn["icona"][:2], True, COLORE_TESTO)
+                surface.blit(testo, (int(cx) - testo.get_width() // 2,
+                                     int(cy) - testo.get_height() // 2))
             else:
                 pygame.draw.circle(surface, defn["colore"],
                                    (int(cx), int(cy)), int(dim * 0.18))
@@ -111,23 +138,23 @@ class Esagono:
             pygame.draw.circle(surface, defn["colore"],
                                (int(cx), int(cy)), int(dim * 0.22))
             if via["origine"] == (self.q, self.r):
-                t = font.render(defn["icona"][:2], True, COLORE_TESTO)
-                surface.blit(t, (int(cx) - t.get_width()//2,
-                                  int(cy) - t.get_height()//2))
+                testo = font.render(defn["icona"][:2], True, COLORE_TESTO)
+                surface.blit(testo, (int(cx) - testo.get_width() // 2,
+                                     int(cy) - testo.get_height() // 2))
 
         # Evento
         if self.evento and modalita_master:
-            fe = pygame.font.SysFont("Arial", max(6, int(dim * 0.28)))
-            t  = fe.render("!", True, (255, 80, 80))
-            surface.blit(t, (int(cx) + int(dim * 0.3),
-                              int(cy) - int(dim * 0.5)))
+            fe    = pygame.font.SysFont("Arial", max(6, int(dim * 0.28)))
+            testo = fe.render("!", True, (255, 80, 80))
+            surface.blit(testo, (int(cx) + int(dim * 0.3),
+                                  int(cy) - int(dim * 0.5)))
 
     def __repr__(self):
         return f"Esagono({self.q},{self.r},'{self.terreno}')"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  CLASSE GRIGLIA (usata per sottolivelli a dimensioni fisse)
+#  CLASSE GRIGLIA
 # ─────────────────────────────────────────────────────────────────────────────
 
 class Griglia:
@@ -148,23 +175,23 @@ class Griglia:
     def pixel_a_hex(self, px, py):
         x = px - self.offset_x
         y = py - self.offset_y
-        q = (math.sqrt(3)/3 * x - 1/3 * y) / self.dimensione
-        r = (2/3 * y) / self.dimensione
+        q = (math.sqrt(3) / 3 * x - 1 / 3 * y) / self.dimensione
+        r = (2 / 3 * y) / self.dimensione
         return self._hex_round(q, r)
 
     def pixel_a_hex_zoom(self, px, py, dim_zoom):
         x = px - self.offset_x
         y = py - self.offset_y
-        q = (math.sqrt(3)/3 * x - 1/3 * y) / dim_zoom
-        r = (2/3 * y) / dim_zoom
+        q = (math.sqrt(3) / 3 * x - 1 / 3 * y) / dim_zoom
+        r = (2 / 3 * y) / dim_zoom
         return self._hex_round(q, r)
 
     def _hex_round(self, q, r):
         s = -q - r
         rq, rr, rs = round(q), round(r), round(s)
-        if abs(rq-q) > abs(rr-r) and abs(rq-q) > abs(rs-s):
+        if abs(rq - q) > abs(rr - r) and abs(rq - q) > abs(rs - s):
             rq = -rr - rs
-        elif abs(rr-r) > abs(rs-s):
+        elif abs(rr - r) > abs(rs - s):
             rr = -rq - rs
         return (rq, rr)
 
@@ -175,19 +202,14 @@ class Griglia:
 
     def disegna_zoom(self, surface, hex_ev=None, master=True,
                      dim_zoom=None, palette=None):
-        d = dim_zoom or self.dimensione
+        d  = dim_zoom or self.dimensione
         lw, lh = surface.get_size()
-
-        # Calcola il range di celle visibili nella viewport
-        # per non disegnare celle fuori schermo (ottimizzazione principale)
-        margine = 2   # celle extra oltre il bordo visibile
-        q_min = int((-(self.offset_x) / (d * math.sqrt(3))) - margine)
-        r_min = int((-(self.offset_y) / (d * 1.5)) - margine)
-        q_max = int(((lw - self.offset_x) / (d * math.sqrt(3))) + margine)
-        r_max = int(((lh - self.offset_y) / (d * 1.5)) + margine)
-
+        m  = 2
+        q_min = int((-self.offset_x / (d * math.sqrt(3))) - m)
+        r_min = int((-self.offset_y / (d * 1.5)) - m)
+        q_max = int(((lw - self.offset_x) / (d * math.sqrt(3))) + m)
+        r_max = int(((lh - self.offset_y) / (d * 1.5)) + m)
         for (q, r), e in self.celle.items():
-            # Salta celle fuori dalla viewport
             if q < q_min or q > q_max or r < r_min or r > r_max:
                 continue
             e.disegna(surface, d, self.offset_x, self.offset_y,
@@ -266,22 +288,35 @@ class PannelloLaterale:
     RAGGIO         = 9
 
     def __init__(self, larghezza: int, altezza: int, e_interno: bool = False):
-        self.larghezza   = larghezza
-        self.altezza     = altezza
-        self.e_interno   = e_interno   # True = mostra pavimenti + oggetti interni
-        self.modalita    = "pavimento" if e_interno else "terreno"
-        self.terreno_selezionato   = "pietra" if e_interno else "pianura"
-        self.oggetto_selezionato   = list(OGGETTI_INTERNI)[0] if e_interno else "casa"
-        self.rotazione             = 0
+        self.larghezza  = larghezza
+        self.altezza    = altezza
+        self.e_interno  = e_interno
+        self.modalita   = "pavimento" if e_interno else "terreno"
+        self.terreno_selezionato = "pietra" if e_interno else "pianura"
+        self.oggetto_selezionato = list(OGGETTI_INTERNI)[0] if e_interno else "casa"
+        self.rotazione  = 0
+
         self.font_titolo = None
         self.font_voce   = None
-        self._rect_terreni  = {}
-        self._rect_oggetti  = {}
-        self._rect_tab_ter  = None
-        self._rect_tab_obj  = None
-        self._rect_rot_su   = None
-        self._rect_rot_giu  = None
+
+        self._rect_terreni   = {}
+        self._rect_oggetti   = {}
+        self._rect_tab_ter   = None
+        self._rect_tab_obj   = None
+        self._rect_tab_npc   = None
+        self._rect_tab_nem   = None
+        self._rect_rot_su    = None
+        self._rect_rot_giu   = None
         self._scroll_oggetti = 0
+
+        self.lista_npc:    list[dict] = []
+        self.lista_nemici: list[dict] = []
+        self._rect_npc:    list       = []
+        self._rect_nemici: list       = []
+        self._scroll_npc  = 0
+        self._scroll_nem  = 0
+        self._npc_selezionato = -1
+        self._nem_selezionato = -1
 
     def inizializza_font(self):
         self.font_titolo = pygame.font.SysFont("Arial", 12, bold=True)
@@ -294,11 +329,21 @@ class PannelloLaterale:
 
     @property
     def _oggetti_correnti(self):
-        return OGGETTI_INTERNI if self.e_interno else OGGETTI
+        if self.e_interno:
+            return OGGETTI_INTERNI
+        # In world map: oggetti normali + esplorabili acquistati
+        from shop.acquisti import possiede
+        tutti = {}
+        tutti.update(OGGETTI)
+        for oid, defn in OGGETTI_ESPLORABILI.items():
+            shop_id = defn.get("shop_id", oid)
+            if possiede(shop_id):
+                tutti[oid] = defn
+        return tutti
 
     @property
     def _label_tab_ter(self):
-        return "Pavimenti" if self.e_interno else "Terreni"
+        return t("pavimenti") if self.e_interno else t("terreni")
 
     def scorri(self, delta):
         if self.modalita not in ("terreno", "pavimento"):
@@ -312,9 +357,11 @@ class PannelloLaterale:
         return 6 + self.ALTEZZA_HEADER + 4
 
     def _aggiorna_layout(self):
-        w2 = self.larghezza // 2
-        self._rect_tab_ter = pygame.Rect(0,  6, w2, self.ALTEZZA_HEADER)
-        self._rect_tab_obj = pygame.Rect(w2, 6, w2, self.ALTEZZA_HEADER)
+        w4 = self.larghezza // 4
+        self._rect_tab_ter = pygame.Rect(0,      6, w4, self.ALTEZZA_HEADER)
+        self._rect_tab_obj = pygame.Rect(w4,     6, w4, self.ALTEZZA_HEADER)
+        self._rect_tab_npc = pygame.Rect(w4 * 2, 6, w4, self.ALTEZZA_HEADER)
+        self._rect_tab_nem = pygame.Rect(w4 * 3, 6, w4, self.ALTEZZA_HEADER)
         y_lista = self._y_lista()
 
         self._rect_terreni.clear()
@@ -333,8 +380,8 @@ class PannelloLaterale:
 
         y_rot = self.altezza - 60
         btn_w = (self.larghezza - self.MARGINE * 3) // 2
-        self._rect_rot_giu = pygame.Rect(self.MARGINE, y_rot, btn_w, 24)
-        self._rect_rot_su  = pygame.Rect(self.MARGINE*2+btn_w, y_rot, btn_w, 24)
+        self._rect_rot_giu = pygame.Rect(self.MARGINE,             y_rot, btn_w, 24)
+        self._rect_rot_su  = pygame.Rect(self.MARGINE * 2 + btn_w, y_rot, btn_w, 24)
 
     def disegna(self, surface):
         self._aggiorna_layout()
@@ -344,27 +391,40 @@ class PannelloLaterale:
                          (self.larghezza, 0), (self.larghezza, self.altezza), 2)
 
         y = 6
-        is_ter = self.modalita in ("terreno", "pavimento")
-        c_ter = COLORE_VOCE_ATTIVA if is_ter     else COLORE_PANNELLO
-        c_obj = COLORE_VOCE_ATTIVA if not is_ter else COLORE_PANNELLO
-        pygame.draw.rect(surface, c_ter, self._rect_tab_ter)
-        pygame.draw.rect(surface, c_obj, self._rect_tab_obj)
-        pygame.draw.rect(surface, COLORE_BORDO, self._rect_tab_ter, 1)
-        pygame.draw.rect(surface, COLORE_BORDO, self._rect_tab_obj, 1)
-        w2 = self.larghezza // 2
-        t1 = self.font_titolo.render(self._label_tab_ter, True, COLORE_TESTO)
-        t2 = self.font_titolo.render("Oggetti", True, COLORE_TESTO)
-        surface.blit(t1, (w2//2 - t1.get_width()//2, y + 8))
-        surface.blit(t2, (w2 + w2//2 - t2.get_width()//2, y + 8))
+        mod_norm = {"terreno": "terreno", "pavimento": "terreno",
+                    "oggetto": "oggetto", "npc": "npc",
+                    "nemico":  "nemico"}.get(self.modalita, "terreno")
 
-        if is_ter:
+        for rect, label, mod in [
+            (self._rect_tab_ter, self._label_tab_ter, "terreno"),
+            (self._rect_tab_obj, t("oggetti"),         "oggetto"),
+            (self._rect_tab_npc, t("npc_tab"),         "npc"),
+            (self._rect_tab_nem, t("nemici_tab"),      "nemico"),
+        ]:
+            attivo = mod_norm == mod
+            pygame.draw.rect(surface,
+                             COLORE_VOCE_ATTIVA if attivo else COLORE_PANNELLO,
+                             rect)
+            pygame.draw.rect(surface, COLORE_BORDO, rect, 1)
+            tl = self.font_titolo.render(label[:4], True, COLORE_TESTO)
+            surface.blit(tl, (rect.centerx - tl.get_width() // 2, y + 8))
+
+        if self.modalita in ("terreno", "pavimento"):
             self._disegna_lista_terreni(surface)
-        else:
+        elif self.modalita == "oggetto":
             self._disegna_lista_oggetti(surface)
+        elif self.modalita == "npc":
+            self._disegna_lista_personaggi(
+                surface, self.lista_npc, self._rect_npc,
+                self._scroll_npc, self._npc_selezionato, "npc")
+        else:
+            self._disegna_lista_personaggi(
+                surface, self.lista_nemici, self._rect_nemici,
+                self._scroll_nem, self._nem_selezionato, "nemico")
 
     def _clip(self):
-        y0  = self._y_lista()
-        h   = self.altezza - y0 - 70
+        y0 = self._y_lista()
+        h  = self.altezza - y0 - 70
         return pygame.Rect(0, y0, self.larghezza, max(1, h))
 
     def _disegna_voce(self, surface, rect, colore, etichetta, sel, clip):
@@ -377,46 +437,95 @@ class PannelloLaterale:
         if clip.top <= cy <= clip.bottom:
             pygame.draw.circle(surface, colore, (cx, cy), self.RAGGIO)
             pygame.draw.circle(surface, COLORE_BORDO, (cx, cy), self.RAGGIO, 1)
-            t = self.font_voce.render(etichetta, True, COLORE_TESTO)
-            ty = cy - t.get_height() // 2
-            if clip.top < ty and ty + t.get_height() < clip.bottom:
-                surface.blit(t, (cx + self.RAGGIO + 5, ty))
+            testo = self.font_voce.render(etichetta, True, COLORE_TESTO)
+            ty = cy - testo.get_height() // 2
+            if clip.top < ty and ty + testo.get_height() < clip.bottom:
+                surface.blit(testo, (cx + self.RAGGIO + 5, ty))
 
     def _disegna_lista_terreni(self, surface):
         clip = self._clip()
-        for nome, colore in self._palette.items():
+        for nome, info in self._palette.items():
+            # Supporta sia il vecchio formato (tupla) che il nuovo (dizionario)
+            colore = info.get("colore", (150, 150, 150)) if isinstance(info, dict) else info
             self._disegna_voce(surface, self._rect_terreni[nome], colore,
                                nome.replace("_", " ").capitalize(),
                                nome == self.terreno_selezionato, clip)
 
     def _disegna_lista_oggetti(self, surface):
-        clip = self._clip()
-        for oid, defn in self._oggetti_correnti.items():
+        clip      = self._clip()
+        oggetti   = self._oggetti_correnti
+        area_h    = clip.height
+        contenuto = len(oggetti) * self.ALTEZZA_VOCE
+
+        for oid, defn in oggetti.items():
+            if oid not in self._rect_oggetti:
+                continue
             self._disegna_voce(surface, self._rect_oggetti[oid], defn["colore"],
                                defn["nome"], oid == self.oggetto_selezionato, clip)
 
-        area_h    = clip.height
-        contenuto = len(self._oggetti_correnti) * self.ALTEZZA_VOCE
         if contenuto > area_h:
             if self._scroll_oggetti > 0:
-                s = self.font_voce.render("▲ scroll", True, (180,180,180))
+                s = self.font_voce.render(t("scroll_su"), True, (180, 180, 180))
                 surface.blit(s, (self.MARGINE, clip.top + 2))
             if self._scroll_oggetti < contenuto - area_h:
-                s = self.font_voce.render("▼ scroll", True, (180,180,180))
+                s = self.font_voce.render(t("scroll_giu"), True, (180, 180, 180))
                 surface.blit(s, (self.MARGINE, clip.bottom - 14))
 
-        # Pulsanti rotazione
         tr = self.font_titolo.render(
-            f"Rot: {self.rotazione*60}°", True, COLORE_TESTO)
+            f"{t('rotazione')} {self.rotazione * 60}°", True, COLORE_TESTO)
         surface.blit(tr, (self.MARGINE, self._rect_rot_giu.y - 18))
         pygame.draw.rect(surface, COLORE_VOCE_ATTIVA, self._rect_rot_giu, border_radius=4)
         pygame.draw.rect(surface, COLORE_VOCE_ATTIVA, self._rect_rot_su,  border_radius=4)
         su  = self.font_voce.render("-60°", True, COLORE_TESTO)
         giu = self.font_voce.render("+60°", True, COLORE_TESTO)
-        surface.blit(su,  (self._rect_rot_giu.centerx - su.get_width()//2,
-                           self._rect_rot_giu.centery - su.get_height()//2))
-        surface.blit(giu, (self._rect_rot_su.centerx  - giu.get_width()//2,
-                           self._rect_rot_su.centery  - giu.get_height()//2))
+        surface.blit(su,  (self._rect_rot_giu.centerx - su.get_width() // 2,
+                           self._rect_rot_giu.centery - su.get_height() // 2))
+        surface.blit(giu, (self._rect_rot_su.centerx  - giu.get_width() // 2,
+                           self._rect_rot_su.centery  - giu.get_height() // 2))
+
+    def _disegna_lista_personaggi(self, surface, lista, rects,
+                                   scroll, sel_idx, tipo):
+        clip = self._clip()
+        y    = self._y_lista() - scroll
+        del rects[:]
+        for i, pg in enumerate(lista):
+            r = pygame.Rect(0, y, self.larghezza, self.ALTEZZA_VOCE)
+            rects.append(r)
+            if r.bottom >= clip.top and r.top <= clip.bottom:
+                colore = tuple(pg.get("colore", (150, 150, 150)))
+                self._disegna_voce(surface, r, colore, pg["nome"],
+                                   i == sel_idx, clip)
+            y += self.ALTEZZA_VOCE
+
+        if not lista:
+            chiave = "nessun_npc" if tipo == "npc" else "nessun_nemico"
+            tl = self.font_voce.render(t(chiave), True, (120, 120, 140))
+            surface.blit(tl, (self.MARGINE, clip.top + 8))
+
+        y_btn   = self.altezza - 80
+        btn_gen = pygame.Rect(self.MARGINE, y_btn,
+                              self.larghezza - self.MARGINE * 2, 28)
+        pygame.draw.rect(surface, (70, 100, 70), btn_gen, border_radius=4)
+        chiave_btn = "genera_npc" if tipo == "npc" else "genera_nemico"
+        tg = self.font_voce.render(t(chiave_btn), True, COLORE_TESTO)
+        surface.blit(tg, (btn_gen.centerx - tg.get_width() // 2,
+                           btn_gen.centery - tg.get_height() // 2))
+
+        y_btn2   = self.altezza - 46
+        btn_crea = pygame.Rect(self.MARGINE, y_btn2,
+                               self.larghezza - self.MARGINE * 2, 28)
+        pygame.draw.rect(surface, (60, 60, 100), btn_crea, border_radius=4)
+        lbl_crea = "➕ Crea NPC" if tipo == "npc" else "➕ Crea Nemico"
+        tc = self.font_voce.render(lbl_crea, True, COLORE_TESTO)
+        surface.blit(tc, (btn_crea.centerx - tc.get_width() // 2,
+                           btn_crea.centery - tc.get_height() // 2))
+
+        if tipo == "npc":
+            self._rect_btn_genera_npc = btn_gen
+            self._rect_btn_crea_npc   = btn_crea
+        else:
+            self._rect_btn_genera_nem = btn_gen
+            self._rect_btn_crea_nem   = btn_crea
 
     def gestisci_click(self, mx, my):
         if mx > self.larghezza:
@@ -430,18 +539,76 @@ class PannelloLaterale:
         if self._rect_tab_obj.collidepoint(mx, my):
             self.modalita = "oggetto"
             return True
+        if self._rect_tab_npc and self._rect_tab_npc.collidepoint(mx, my):
+            self.modalita = "npc"
+            return True
+        if self._rect_tab_nem and self._rect_tab_nem.collidepoint(mx, my):
+            self.modalita = "nemico"
+            return True
 
-        is_ter = self.modalita in ("terreno", "pavimento")
-        if is_ter:
+        y0 = self._y_lista()
+
+        if self.modalita in ("terreno", "pavimento"):
             for nome, rect in self._rect_terreni.items():
                 if rect.collidepoint(mx, my):
                     self.terreno_selezionato = nome
                     return True
-        else:
-            y0 = self._y_lista()
+
+        elif self.modalita == "oggetto":
             for oid, rect in self._rect_oggetti.items():
                 if rect.collidepoint(mx, my) and y0 <= my <= self.altezza - 70:
                     self.oggetto_selezionato = oid
+                    return True
+
+        elif self.modalita == "npc":
+            btn_gen  = getattr(self, "_rect_btn_genera_npc", None)
+            btn_crea = getattr(self, "_rect_btn_crea_npc",   None)
+            if btn_gen and btn_gen.collidepoint(mx, my):
+                nuovo = genera_npc(lingua_corrente())
+                self.lista_npc.append(nuovo)
+                self._npc_selezionato = len(self.lista_npc) - 1
+                return "apri_scheda_npc"
+            if btn_crea and btn_crea.collidepoint(mx, my):
+                vuoto = {
+                    "tipo": "npc", "nome": "Nuovo NPC",
+                    "razza": "Umano", "classe": "Mercante",
+                    "pf": 10, "pf_max": 10, "ca": 10,
+                    "statistiche": {k: 10 for k in
+                                    ["for","des","cos","int","sag","car"]},
+                    "colore": (150, 150, 200),
+                }
+                self.lista_npc.append(vuoto)
+                self._npc_selezionato = len(self.lista_npc) - 1
+                return "apri_scheda_npc"
+            for i, rect in enumerate(self._rect_npc):
+                if rect.collidepoint(mx, my) and y0 <= my <= self.altezza - 90:
+                    self._npc_selezionato = i
+                    return True
+
+        elif self.modalita == "nemico":
+            btn_gen  = getattr(self, "_rect_btn_genera_nem", None)
+            btn_crea = getattr(self, "_rect_btn_crea_nem",   None)
+            if btn_gen and btn_gen.collidepoint(mx, my):
+                nuovo = genera_nemico(lingua_corrente())
+                self.lista_nemici.append(nuovo)
+                self._nem_selezionato = len(self.lista_nemici) - 1
+                return "apri_scheda_nem"
+            if btn_crea and btn_crea.collidepoint(mx, my):
+                vuoto = {
+                    "tipo": "nemico", "nome": "Nuovo Nemico",
+                    "razza": "Goblin", "classe": "Goblin",
+                    "difficolta": "medio",
+                    "pf": 15, "pf_max": 15, "ca": 12,
+                    "statistiche": {k: 10 for k in
+                                    ["for","des","cos","int","sag","car"]},
+                    "colore": (200, 80, 80),
+                }
+                self.lista_nemici.append(vuoto)
+                self._nem_selezionato = len(self.lista_nemici) - 1
+                return "apri_scheda_nem"
+            for i, rect in enumerate(self._rect_nemici):
+                if rect.collidepoint(mx, my) and y0 <= my <= self.altezza - 90:
+                    self._nem_selezionato = i
                     return True
 
         if self._rect_rot_giu and self._rect_rot_giu.collidepoint(mx, my):
@@ -458,37 +625,22 @@ class PannelloLaterale:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def demo(griglia_esistente=None, mappa_id=None):
-    """
-    Avvia l'editor mappa.
-
-    Controlli:
-      Rotellina mappa   — zoom
-      Ctrl+trascina /
-      Tasto centrale    — pan (muovi vista)
-      Click sin (ter)   — pittura terreno trascinando
-      Click sin (obj)   — piazza oggetto (trascina per 1 cella)
-      Tasto destro      — menu contestuale
-      Rotellina pannello— scroll lista oggetti
-      M                 — toggle Master/Player
-      S                 — salva
-      Backspace         — torna al livello superiore (se in sottolivello)
-      ESC               — chiudi
-    """
     pygame.init()
     lw = max(1400, LARGHEZZA_FINESTRA)
     lh = max(900,  ALTEZZA_FINESTRA)
     schermo = pygame.display.set_mode((lw, lh), pygame.RESIZABLE)
     clock   = pygame.time.Clock()
 
-    # ── Stack di navigazione: ogni elemento = (griglia, mappa_id, titolo, palette) ──
-    # Il primo elemento è sempre il livello world
-    if griglia_esistente is None:
-        from mappa.chunk import GestoreChunk, CHUNK_SIZE
-        usa_chunk = mappa_id is not None
-    else:
-        usa_chunk = False
+    # ── Tileset attivo ────────────────────────────────────────────────────────
+    from auth.sessione_utente import utente_corrente
+    from database.modelli import ottieni_tileset_attivo
+    from config import get_palette_con_tileset
 
-    # Per ora usiamo sempre Griglia normale (chunk nella versione futura)
+    utente     = utente_corrente()
+    tileset_id = ottieni_tileset_attivo(utente["id"]) if utente else "tileset_base"
+    PALETTE_WORLD = get_palette_con_tileset(tileset_id)
+
+    # ── Griglia world ─────────────────────────────────────────────────────────
     if griglia_esistente:
         griglia_world = griglia_esistente
         griglia_world.offset_x = LARGHEZZA_PANNELLO + 20
@@ -497,35 +649,30 @@ def demo(griglia_esistente=None, mappa_id=None):
         griglia_world = Griglia(30, 20, DIMENSIONE_HEX,
                                 offset_x=LARGHEZZA_PANNELLO + 20, offset_y=60)
 
-    # Stack navigazione: (griglia, mappa_id_o_sottolivello_id,
-    #                     titolo_breadcrumb, palette, e_interno)
-    stack = [(griglia_world, mappa_id, "World", TERRENI, False)]
+    # stack: (griglia, id, breadcrumb, palette, e_interno)
+    stack = [(griglia_world, mappa_id, "World", PALETTE_WORLD, False)]
 
     def livello_corrente():
         return stack[-1]
 
-    # ── Stato editor ──────────────────────────────────────────────────────────
-    zoom        = 1.0
-    ZOOM_MIN    = 0.15
-    ZOOM_MAX    = 4.0
-    ZOOM_STEP   = 0.12
-    pan_attivo  = False
-    pan_ultimo  = (0, 0)
-    tasto_prem  = False
-    master      = True
-    salvato     = True
+    # ── Stato ────────────────────────────────────────────────────────────────
+    zoom       = 1.0
+    ZOOM_MIN   = 0.15
+    ZOOM_MAX   = 4.0
+    ZOOM_STEP  = 0.12
+    pan_attivo = False
+    pan_ultimo = (0, 0)
+    tasto_prem = False
+    master     = True
+    salvato    = True
 
     from mappa.menu_contestuale import MenuContestuale
     menu = MenuContestuale()
 
-    def titolo_aggiornato():
-        griglia, mid, titolo, palette, interno = livello_corrente()
-        breadcrumb = " > ".join(s[2] for s in stack)
-        mod = "" if salvato else " *"
-        return f"GDR Hex — {breadcrumb}{mod}"
-
     def aggiorna_titolo():
-        pygame.display.set_caption(titolo_aggiornato())
+        bc  = " > ".join(s[2] for s in stack)
+        mod = "" if salvato else " *"
+        pygame.display.set_caption(f"GDR Hex — {bc}{mod}")
 
     aggiorna_titolo()
 
@@ -539,7 +686,7 @@ def demo(griglia_esistente=None, mappa_id=None):
 
     def salva():
         nonlocal salvato
-        griglia, mid, titolo, palette, interno = livello_corrente()
+        griglia, mid, _, _, interno = livello_corrente()
         if mid is None:
             return
         if interno:
@@ -559,16 +706,15 @@ def demo(griglia_esistente=None, mappa_id=None):
             aggiorna_titolo()
 
     def entra_sottolivello(cella):
-        """Entra nel sottolivello della cella corrente."""
         if not cella.sottolivello_id:
             return
         from mappa.sottolivello import carica_sottolivello
         from mappa.esporta import dizionario_a_griglia
+        import json as _json
         dati = carica_sottolivello(cella.sottolivello_id)
         if not dati:
             return
-        import json as _json
-        dati_json = _json.loads(dati["dati_json"]) if dati["dati_json"] != '{}' else None
+        dati_json = _json.loads(dati["dati_json"]) if dati["dati_json"] != "{}" else None
         if dati_json and dati_json.get("celle"):
             gr = dizionario_a_griglia(dati_json)
         else:
@@ -584,16 +730,17 @@ def demo(griglia_esistente=None, mappa_id=None):
         aggiorna_titolo()
 
     def crea_sottolivello_per(cella):
-        """Crea un nuovo sottolivello per la cella e ci entra."""
         struttura = cella.oggetti.get("struttura")
         if not struttura:
             return
-        obj_id = struttura["def"]["id"]
+        obj_id  = struttura["def"]["id"]
+        defn    = struttura["def"]
         griglia, mid, *_ = livello_corrente()
         if mid is None:
             return
         from mappa.sottolivello import crea_sottolivello
-        sl_id = crea_sottolivello(mid, obj_id, cella.q, cella.r)
+        preset = defn.get("preset_sottolivello", "stanza")
+        sl_id  = crea_sottolivello(mid, obj_id, cella.q, cella.r, preset)
         cella.sottolivello_id = sl_id
         segna_mod()
         entra_sottolivello(cella)
@@ -631,7 +778,7 @@ def demo(griglia_esistente=None, mappa_id=None):
             griglia.offset_y += dy
             pan_ultimo = (mx, my)
 
-        # Pittura terreno trascinando
+        # Pittura terreno
         if (tasto_prem and hex_curr and mx > LARGHEZZA_PANNELLO
                 and is_ter and not menu.visibile):
             griglia.celle[hex_curr].terreno = pannello.terreno_selezionato
@@ -639,8 +786,8 @@ def demo(griglia_esistente=None, mappa_id=None):
 
         # Trascinamento oggetti 1 cella
         if (tasto_prem and hex_curr and mx > LARGHEZZA_PANNELLO
-                and not is_ter and not menu.visibile):
-            tutti_obj = OGGETTI_INTERNI if interno else OGGETTI
+                and pannello.modalita == "oggetto" and not menu.visibile):
+            tutti_obj = OGGETTI_INTERNI if interno else pannello._oggetti_correnti
             defn = tutti_obj.get(pannello.oggetto_selezionato)
             if defn and len(defn["forma"]) == 1:
                 if griglia.puoi_piazzare(hq, hr, defn, pannello.rotazione):
@@ -649,21 +796,21 @@ def demo(griglia_esistente=None, mappa_id=None):
 
         # Anteprima oggetto
         celle_ant = []
-        if (hex_curr and not is_ter and mx > LARGHEZZA_PANNELLO
-                and not pan_attivo and not menu.visibile):
-            tutti_obj = OGGETTI_INTERNI if interno else OGGETTI
+        if (hex_curr and pannello.modalita == "oggetto"
+                and mx > LARGHEZZA_PANNELLO and not pan_attivo
+                and not menu.visibile):
+            tutti_obj = OGGETTI_INTERNI if interno else pannello._oggetti_correnti
             defn = tutti_obj.get(pannello.oggetto_selezionato)
             if defn:
                 celle_ant = griglia.calcola_celle_occupate(
                     hq, hr, defn, pannello.rotazione)
 
-        # Disegno griglia
+        # Disegno
         griglia.disegna_zoom(schermo, hex_curr, master, dim_zoom, palette)
 
-        # Anteprima verde/rossa
         for (aq, ar) in celle_ant:
             if (aq, ar) in griglia.celle:
-                tutti_obj = OGGETTI_INTERNI if interno else OGGETTI
+                tutti_obj = OGGETTI_INTERNI if interno else pannello._oggetti_correnti
                 defn = tutti_obj.get(pannello.oggetto_selezionato)
                 if defn:
                     ok  = griglia.puoi_piazzare(hq, hr, defn, pannello.rotazione)
@@ -677,52 +824,47 @@ def demo(griglia_esistente=None, mappa_id=None):
         pannello.disegna(schermo)
 
         # ── Barra in alto ─────────────────────────────────────────────────────
-        barra_h = 40
         pygame.draw.rect(schermo, (35, 35, 48),
-                         (LARGHEZZA_PANNELLO, 0, lw - LARGHEZZA_PANNELLO, barra_h))
+                         (LARGHEZZA_PANNELLO, 0, lw - LARGHEZZA_PANNELLO, 40))
         pygame.draw.line(schermo, COLORE_BORDO,
-                         (LARGHEZZA_PANNELLO, barra_h), (lw, barra_h), 1)
+                         (LARGHEZZA_PANNELLO, 40), (lw, 40), 1)
 
         font_hud = pygame.font.SysFont("Arial", 13)
         font_btn = pygame.font.SysFont("Arial", 12, bold=True)
 
-        # Pulsante SALVA
         btn_salva = pygame.Rect(lw - 130, 6, 120, 28)
-        c_btn = (50, 120, 50) if salvato else (130, 75, 20)
+        c_btn     = (50, 120, 50) if salvato else (130, 75, 20)
         pygame.draw.rect(schermo, c_btn, btn_salva, border_radius=5)
         pygame.draw.rect(schermo, (160, 160, 160), btn_salva, 1, border_radius=5)
-        lbl = "✓ Salvata" if salvato else "💾 Salva (S)"
+        lbl = t("salvata") if salvato else t("salva_s")
         ts  = font_btn.render(lbl, True, COLORE_TESTO)
-        schermo.blit(ts, (btn_salva.centerx - ts.get_width()//2,
-                           btn_salva.centery - ts.get_height()//2))
+        schermo.blit(ts, (btn_salva.centerx - ts.get_width() // 2,
+                           btn_salva.centery - ts.get_height() // 2))
 
-        # Pulsante TORNA SU (se in sottolivello)
         btn_torna = None
         if len(stack) > 1:
             btn_torna = pygame.Rect(lw - 270, 6, 130, 28)
             pygame.draw.rect(schermo, (60, 60, 100), btn_torna, border_radius=5)
-            pygame.draw.rect(schermo, (160,160,160), btn_torna, 1, border_radius=5)
-            tt = font_btn.render("← Torna su (⌫)", True, COLORE_TESTO)
-            schermo.blit(tt, (btn_torna.centerx - tt.get_width()//2,
-                               btn_torna.centery - tt.get_height()//2))
+            pygame.draw.rect(schermo, (160, 160, 160), btn_torna, 1, border_radius=5)
+            tt = font_btn.render(t("torna_su"), True, COLORE_TESTO)
+            schermo.blit(tt, (btn_torna.centerx - tt.get_width() // 2,
+                               btn_torna.centery - tt.get_height() // 2))
 
-        # Info breadcrumb + zoom
-        breadcrumb = " > ".join(s[2] for s in stack)
+        bc   = " > ".join(s[2] for s in stack)
         info = font_hud.render(
-            f"{breadcrumb}   |   Zoom {zoom:.1f}x   "
-            f"Ctrl+trascina: pan   Rotellina: zoom",
+            f"{bc}   |   {t('zoom')} {zoom:.1f}x   {t('pan')}   {t('rotellina')}",
             True, COLORE_TESTO)
         schermo.blit(info, (LARGHEZZA_PANNELLO + 10, 12))
 
-        # HUD in basso
         if is_ter:
             azione = f"{'Pavimento' if interno else 'Terreno'}: {pannello.terreno_selezionato}"
         else:
-            tutti_obj = OGGETTI_INTERNI if interno else OGGETTI
+            tutti_obj = OGGETTI_INTERNI if interno else pannello._oggetti_correnti
             defn = tutti_obj.get(pannello.oggetto_selezionato)
             if defn and hex_curr:
-                ok = griglia.puoi_piazzare(hq, hr, defn, pannello.rotazione)
-                azione = (f"Oggetto: {defn['nome']}  rot:{pannello.rotazione*60}°  "
+                ok     = griglia.puoi_piazzare(hq, hr, defn, pannello.rotazione)
+                azione = (f"Oggetto: {defn['nome']}  "
+                          f"rot:{pannello.rotazione * 60}°  "
                           f"{'✓ OK' if ok else '✗ bloccato'}")
             else:
                 azione = f"Oggetto: {pannello.oggetto_selezionato}"
@@ -731,10 +873,8 @@ def demo(griglia_esistente=None, mappa_id=None):
             True, COLORE_TESTO)
         schermo.blit(hud, (LARGHEZZA_PANNELLO + 10, lh - 22))
 
-        # Menu contestuale
         menu.aggiorna_hover(mx, my)
         menu.disegna(schermo)
-
         pygame.display.flip()
         clock.tick(30)
 
@@ -754,21 +894,16 @@ def demo(griglia_esistente=None, mappa_id=None):
                     torna_su()
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                # Click sul pulsante SALVA
                 if event.button == 1 and btn_salva.collidepoint(mx, my):
                     salva()
                     continue
-
-                # Click sul pulsante TORNA SU
                 if event.button == 1 and btn_torna and btn_torna.collidepoint(mx, my):
                     torna_su()
                     continue
 
-                # Menu contestuale aperto — gestisci click
                 if menu.visibile:
                     azione_menu = menu.gestisci_click(mx, my)
                     if azione_menu and azione_menu != "__consumato__":
-                        # Usa la cella salvata al momento dell'apertura del menu
                         cella_m = getattr(menu, "_cella_salvata", None)
                         hqm     = getattr(menu, "_hq_salvato", 0)
                         hrm     = getattr(menu, "_hr_salvato", 0)
@@ -794,11 +929,34 @@ def demo(griglia_esistente=None, mappa_id=None):
                         pan_ultimo = (mx, my)
                     else:
                         click_pan = pannello.gestisci_click(mx, my)
-                        if not click_pan and mx > LARGHEZZA_PANNELLO:
+
+                        if click_pan in ("apri_scheda_npc", "apri_scheda_nem"):
+                            pygame.display.iconify()
+                            from npc.scheda_npc import SchedaNPC
+                            from PyQt6.QtWidgets import QApplication
+                            app_qt = QApplication.instance()
+                            if app_qt:
+                                if click_pan == "apri_scheda_npc":
+                                    lista = pannello.lista_npc
+                                    idx   = pannello._npc_selezionato
+                                else:
+                                    lista = pannello.lista_nemici
+                                    idx   = pannello._nem_selezionato
+                                if 0 <= idx < len(lista):
+                                    dlg = SchedaNPC(lista[idx])
+                                    def _upd(d, _lista=lista, _i=idx):
+                                        _lista[_i] = d
+                                    dlg.scheda_aggiornata.connect(_upd)
+                                    dlg.exec()
+                            pygame.display.set_mode((lw, lh), pygame.RESIZABLE)
+
+                        elif not click_pan and mx > LARGHEZZA_PANNELLO:
                             if is_ter:
                                 tasto_prem = True
-                            elif hex_curr:
-                                tutti_obj = OGGETTI_INTERNI if interno else OGGETTI
+
+                            elif pannello.modalita == "oggetto" and hex_curr:
+                                tutti_obj = (OGGETTI_INTERNI if interno
+                                             else pannello._oggetti_correnti)
                                 defn = tutti_obj.get(pannello.oggetto_selezionato)
                                 if defn:
                                     ok = griglia.piazza_oggetto(
@@ -806,21 +964,46 @@ def demo(griglia_esistente=None, mappa_id=None):
                                     if ok:
                                         segna_mod()
                                         tasto_prem = True
+                                        # Sottolivello automatico per oggetti esplorabili
+                                        if defn.get("ha_sottolivello") and mid:
+                                            from database.modelli import \
+                                                crea_sottolivello_esplorabile
+                                            preset = defn.get(
+                                                "preset_sottolivello", "stanza")
+                                            sl_id = crea_sottolivello_esplorabile(
+                                                mid, defn["id"], hq, hr, preset)
+                                            griglia.celle[(hq, hr)].sottolivello_id = sl_id
+
+                            elif pannello.modalita in ("npc", "nemico") and hex_curr:
+                                lista = (pannello.lista_npc
+                                         if pannello.modalita == "npc"
+                                         else pannello.lista_nemici)
+                                idx   = (pannello._npc_selezionato
+                                         if pannello.modalita == "npc"
+                                         else pannello._nem_selezionato)
+                                if 0 <= idx < len(lista):
+                                    pg    = lista[idx]
+                                    cella = griglia.celle[hex_curr]
+                                    cella.oggetti["mobile"].append({
+                                        "tipo":   pg["tipo"],
+                                        "nome":   pg["nome"],
+                                        "colore": tuple(pg.get("colore", (200, 100, 100))),
+                                        "scheda": pg,
+                                    })
+                                    segna_mod()
 
                 elif event.button == 2 and mx > LARGHEZZA_PANNELLO:
                     pan_attivo = True
                     pan_ultimo = (mx, my)
 
-                elif event.button == 3:
-                    # Menu contestuale — salva la cella al momento dell'apertura
-                    if mx > LARGHEZZA_PANNELLO:
-                        hq2, hr2 = griglia.pixel_a_hex_zoom(mx, my, dim_zoom)
-                        cella_menu = griglia.celle.get((hq2, hr2))
-                        ha_sl = bool(cella_menu.sottolivello_id) if cella_menu else False
-                        menu.apri(mx, my, cella_menu, ha_sl, lw, lh)
-                        menu._cella_salvata   = cella_menu
-                        menu._hq_salvato      = hq2
-                        menu._hr_salvato      = hr2
+                elif event.button == 3 and mx > LARGHEZZA_PANNELLO:
+                    hq2, hr2   = griglia.pixel_a_hex_zoom(mx, my, dim_zoom)
+                    cella_menu = griglia.celle.get((hq2, hr2))
+                    ha_sl      = bool(cella_menu.sottolivello_id) if cella_menu else False
+                    menu.apri(mx, my, cella_menu, ha_sl, lw, lh)
+                    menu._cella_salvata = cella_menu
+                    menu._hq_salvato    = hq2
+                    menu._hr_salvato    = hr2
 
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
@@ -834,7 +1017,7 @@ def demo(griglia_esistente=None, mappa_id=None):
                     pannello.scorri(event.y)
                 elif not menu.visibile:
                     vecchio = zoom
-                    zoom = max(ZOOM_MIN, min(ZOOM_MAX, zoom + event.y * ZOOM_STEP))
+                    zoom    = max(ZOOM_MIN, min(ZOOM_MAX, zoom + event.y * ZOOM_STEP))
                     f = zoom / vecchio
                     griglia.offset_x = int(mx - (mx - griglia.offset_x) * f)
                     griglia.offset_y = int(my - (my - griglia.offset_y) * f)
@@ -842,7 +1025,6 @@ def demo(griglia_esistente=None, mappa_id=None):
             elif event.type == pygame.VIDEORESIZE:
                 pannello.altezza = event.h
 
-    # Salva tutto prima di chiudere
     salva()
     pygame.quit()
 

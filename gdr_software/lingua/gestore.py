@@ -123,7 +123,7 @@ def main():
 	app = QApplication(sys.argv)
 	app.setApplicationName(APP_TITOLO)
 	app.setApplicationVersion(APP_VERSIONE)
-
+	
 	# Gestione Lingua
 	from lingua.gestore import imposta_lingua
 	codice_lingua = mostra_scelta_lingua()

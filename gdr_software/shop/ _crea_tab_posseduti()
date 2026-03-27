@@ -196,6 +196,8 @@ class ShopDM(QDialog):
         tabs.addTab(self._crea_tab_griglia(CATALOGO_MANUALI, "manuale"),
                     "📚 Manuali")
         tabs.addTab(self._crea_tab_posseduti(), t("i_miei_acquisti"))
+        tabs.addTab(self._crea_tab_tileset(),     "🎨 Tileset Mappa")
+        tabs.addTab(self._crea_tab_esplorabili(), "🏠 Oggetti Esplorabili")
         layout.addWidget(tabs)
 
         btn_chiudi = QPushButton(t("chiudi"))

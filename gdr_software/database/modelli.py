@@ -354,3 +354,70 @@ def acquisti_utente(utente_id: int) -> list:
         "SELECT asset_id, tipo_asset, data_acquisto FROM acquisti WHERE utente_id = ?",
         (utente_id,)
     )
+
+"""
+AGGIUNTE A database/modelli.py
+================================
+Incolla queste funzioni alla FINE del file modelli.py
+"""
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  TILESET
+# ─────────────────────────────────────────────────────────────────────────────
+
+def ottieni_tileset_attivo(utente_id: int) -> str:
+    """
+    Restituisce l'id del tileset attualmente attivo per l'utente.
+    Se l'utente non ha mai scelto, usa 'tileset_base' (gratuito).
+    """
+    riga = leggi_uno(
+        "SELECT tileset_id FROM tileset_attivi WHERE utente_id = ?",
+        (utente_id,)
+    )
+    return riga["tileset_id"] if riga else "tileset_base"
+
+
+def imposta_tileset_attivo(utente_id: int, tileset_id: str):
+    """
+    Salva il tileset scelto dall'utente nel database.
+    Usa INSERT OR REPLACE: se esiste già un record lo aggiorna,
+    altrimenti lo inserisce.
+    """
+    esegui(
+        """INSERT OR REPLACE INTO tileset_attivi (utente_id, tileset_id)
+           VALUES (?, ?)""",
+        (utente_id, tileset_id)
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  OGGETTI ESPLORABILI — sottolivelli acquistati
+# ─────────────────────────────────────────────────────────────────────────────
+
+def crea_sottolivello_esplorabile(mappa_id: int,
+                                  oggetto_id: str,
+                                  q_origine: int,
+                                  r_origine: int,
+                                  preset: str) -> int:
+    """
+    Crea un sottolivello vuoto per un oggetto esplorabile appena piazzato.
+    Restituisce l'id del nuovo sottolivello.
+
+    Questa funzione viene chiamata automaticamente quando il DM piazza
+    un oggetto esplorabile sulla mappa (es. casa_esplorabile).
+    Il sottolivello è vuoto — il DM lo disegna aprendo l'editor.
+    """
+    from config import PRESET_DIMENSIONI_SOTTOLIVELLO
+
+    colonne, righe = PRESET_DIMENSIONI_SOTTOLIVELLO.get(preset, (40, 30))
+
+    cursore = esegui(
+        """INSERT INTO sottolivelli
+           (mappa_parent_id, oggetto_id, q_origine, r_origine,
+            preset, colonne, righe, dati_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, '{}')""",
+        (mappa_id, oggetto_id, q_origine, r_origine,
+         preset, colonne, righe)
+    )
+    return cursore.lastrowid
+

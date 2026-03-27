@@ -14,7 +14,7 @@ from PyQt6.QtGui import QFont
 
 from config import APP_TITOLO, APP_VERSIONE
 from database.db import inizializza_db
-from auth.login_window import LoginWindow
+#from auth.login_window import LoginWindow
 from auth.sessione_utente import utente_corrente, e_dm, logout
 
 def mostra_scelta_lingua() -> str:

@@ -215,6 +215,32 @@ PAVIMENTI = {
 #  OGGETTI INTERNI — usati solo nei sottolivelli
 # ─────────────────────────────────────────────────────────────────────────────
 
+"""
+AGGIUNTA A config.py — PRESET_DIMENSIONI_SOTTOLIVELLO
+======================================================
+Aggiungi questo blocco in config.py DOPO la sezione PAVIMENTI,
+prima della sezione OGGETTI_INTERNI.
+
+Questo dizionario centralizza le dimensioni di ogni tipo di sottolivello
+in modo che sia usato sia da mappa/sottolivello.py che da modelli.py
+senza duplicare i valori.
+"""
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  PRESET DIMENSIONI SOTTOLIVELLI
+# ─────────────────────────────────────────────────────────────────────────────
+# Queste dimensioni sono in esagoni (colonne × righe).
+# Usate sia per i sottolivelli creati manualmente che per quelli
+# degli oggetti esplorabili acquistati dallo shop.
+
+PRESET_DIMENSIONI_SOTTOLIVELLO = {
+    "stanza":                (40,   30),   # Una stanza normale
+    "sotterranei_piccoli":   (100,  80),   # Sotterranei piccoli
+    "sotterranei_castello":  (400, 300),   # Sotterranei di un castello
+    "dungeon":               (650, 500),   # Dungeon classico
+    "grande_dungeon":        (1000, 800),  # Mega-dungeon
+}
+
 OGGETTI_INTERNI = {
     # ── Strutture interne ─────────────────────────────────────────────────────
     "muro": {

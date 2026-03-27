@@ -2,34 +2,15 @@
 main.py — Punto di ingresso dell'applicazione GDR
 ==================================================
 Questo è il primo file che viene eseguito.
-Ha UNA responsabilità: orchestrare l'avvio.
-
-Cosa fa:
-  1. Inizializza il database (crea le tabelle se non esistono)
-  2. Crea l'applicazione PyQt
-  3. Mostra la finestra di login
-  4. Quando il login riesce, apre la dashboard giusta (DM o Player)
-  5. Gestisce la chiusura pulita
-
-Cosa NON fa:
-  - Non contiene logica di autenticazione (quella è in auth/)
-  - Non costruisce UI (quella è in dashboard/ e auth/)
-  - Non tocca il database direttamente (quello è in database/)
-
-Perché è così corto?
-  Un main.py lungo è un segnale che la logica è nel posto sbagliato.
-  Se hai bisogno di capire "come funziona il login", non guardi qui —
-  guardi auth/. main.py dice solo QUANDO e in CHE ORDINE le cose accadono.
 """
 
 import sys
 import os
 
-# Garantisce che il working directory sia sempre la cartella del progetto,
-# indipendentemente da dove viene lanciato lo script su Windows.
+# Garantisce che il working directory sia sempre la cartella del progetto
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-from PyQt6.QtWidgets import (QApplication, QMessageBox, QDialog,QVBoxLayout, QLabel, QPushButton, QHBoxLayout)
+from PyQt6.QtWidgets import (QApplication, QMessageBox, QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 
@@ -41,92 +22,74 @@ from auth.sessione_utente import utente_corrente, e_dm, logout
 def mostra_scelta_lingua() -> str:
     """
     Mostra la finestra di scelta lingua al primo avvio.
-    Restituisce "it" o "en" in base alla scelta dell'utente.
-    La scelta viene salvata nel DB per i prossimi avvii.
     """
     from database.db import leggi_uno, esegui
- 
-    # Controlla se c'è già una preferenza salvata nel database
+
+    # Controlla se c'è già una preferenza salvata
     riga = leggi_uno("SELECT valore FROM impostazioni WHERE chiave='lingua'")
     if riga:
-        return riga["valore"]   # già scelta in precedenza, usa quella
- 
+        return riga["valore"]
+
     # Prima volta: mostra la finestra di scelta
     dialog = QDialog()
     dialog.setWindowTitle("Language / Lingua")
     dialog.setFixedSize(360, 220)
-    # Nasconde il pulsante X per non poter chiudere senza scegliere
-    dialog.setWindowFlags(dialog.windowFlags() &
-                           ~Qt.indowType.WindowCloseButtonHint)
- 
+    # Nasconde il pulsante X
+    dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowType.WindowCloseButtonHint)
+
     layout = QVBoxLayout(dialog)
     layout.setSpacing(16)
     layout.setContentsMargins(30, 30, 30, 30)
- 
+
     lbl = QLabel("Scegli la lingua / Choose your language")
     lbl.setFont(QFont("Arial", 13, QFont.Weight.Bold))
     lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
     layout.addWidget(lbl)
- 
-    # Variabile che tiene traccia della lingua selezionata
-    # Usiamo una lista perché le lambda non possono modificare
-    # variabili semplici dall'esterno (limitazione Python)
+
     lingua_scelta = ["it"]
- 
+
     riga_btn = QHBoxLayout()
     riga_btn.setSpacing(12)
+    
     btn_it = QPushButton("🇮🇹  Italiano")
     btn_it.setMinimumHeight(48)
     btn_it.setFont(QFont("Arial", 13))
     btn_it.setStyleSheet("background-color: #5a5a90; border-radius: 6px;")
- 
+
     btn_en = QPushButton("🇬🇧  English")
     btn_en.setMinimumHeight(48)
     btn_en.setFont(QFont("Arial", 13))
- 
-def scegli(codice):
-  lingua_scelta[0] = codice
-  if codice == "it":
-    btn_it.setStyleSheet("background-color: #5a5a90; border-radius: 6px;")
-    btn_en.setStyleSheet("")
-  else:
-    btn_en.setStyleSheet("background-color: #5a5a90; border-radius: 6px;")
-    btn_it.setStyleSheet("")
- 
-  btn_it.clicked.connect(lambda: scegli("it"))
-  btn_en.clicked.connect(lambda: scegli("en"))
-  riga_btn.addWidget(btn_it)
-  riga_btn.addWidget(btn_en)
-  layout.addLayout(riga_btn)
- 
-  btn_ok = QPushButton("Continua / Continue")
-  btn_ok.setMinimumHeight(36)
-  btn_ok.clicked.connect(dialog.accept)
-  layout.addWidget(btn_ok)
- 
-  dialog.exec()
- 
-  codice = lingua_scelta[0]
-  # Salva la preferenza nel DB per i prossimi avvii
-  esegui("INSERT OR REPLACE INTO impostazioni (chiave, valore) VALUES (?,?)",
-    ("lingua", codice))
-  return codice
 
+    def scegli(codice):
+        lingua_scelta[0] = codice
+        if codice == "it":
+            btn_it.setStyleSheet("background-color: #5a5a90; border-radius: 6px;")
+            btn_en.setStyleSheet("")
+        else:
+            btn_en.setStyleSheet("background-color: #5a5a90; border-radius: 6px;")
+            btn_it.setStyleSheet("")
+
+    btn_it.clicked.connect(lambda: scegli("it"))
+    btn_en.clicked.connect(lambda: scegli("en"))
+    
+    riga_btn.addWidget(btn_it)
+    riga_btn.addWidget(btn_en)
+    layout.addLayout(riga_btn)
+
+    btn_ok = QPushButton("Continua / Continue")
+    btn_ok.setMinimumHeight(36)
+    btn_ok.clicked.connect(dialog.accept)
+    layout.addWidget(btn_ok)
+
+    dialog.exec()
+
+    codice = lingua_scelta[0]
+    esegui("INSERT OR REPLACE INTO impostazioni (chiave, valore) VALUES (?,?)", ("lingua", codice))
+    return codice
 
 
 def avvia_dashboard(dati_utente: dict, app: QApplication):
-    """
-    Apre la dashboard giusta in base al ruolo dell'utente.
-
-    Viene chiamata dal signal login_riuscito di LoginWindow.
-    Riceve i dati utente direttamente dal signal.
-
-    Perché importiamo le dashboard QUI e non in cima al file?
-    Import ritardato: le dashboard importano molti moduli (PyQt, pygame...).
-    Importarle solo quando servono velocizza l'avvio — durante il login
-    non hai ancora bisogno della dashboard. Su progetti piccoli non fa
-    differenza, ma è un'abitudine utile da sviluppare.
-    """
+    """Apre la dashboard giusta in base al ruolo dell'utente."""
     if e_dm():
         from dashboard.dashboard_dm import DashboardDM
         finestra = DashboardDM()
@@ -135,92 +98,48 @@ def avvia_dashboard(dati_utente: dict, app: QApplication):
         finestra = DashboardPlayer()
 
     finestra.show()
-
-    # Collega il signal di logout della dashboard alla funzione di cleanup.
-    # Quando il DM o il Player clicca "Esci", la dashboard emette logout_richiesto.
-    # Noi rispondiamo cancellando la sessione e mostrando di nuovo il login.
     finestra.logout_richiesto.connect(lambda: gestisci_logout(finestra, app))
 
 
 def gestisci_logout(finestra_corrente, app: QApplication):
-    """
-    Gestisce il logout dell'utente.
-
-    Flusso:
-      1. Cancella i dati dell'utente corrente
-      2. Chiude la dashboard
-      3. Mostra di nuovo il login
-
-    Perché non chiudiamo l'app e la riavviamo?
-    Perché sarebbe un'esperienza utente pessima. L'utente si aspetta
-    di poter fare login con un altro account senza riaprire il programma.
-    Distruggere e ricreare le finestre è il modo corretto in PyQt.
-    """
-    logout()                    # cancella utente_corrente
-    finestra_corrente.close()   # chiude dashboard
-    mostra_login(app)           # riapre il login
+    """Gestisce il logout dell'utente."""
+    logout()
+    finestra_corrente.close()
+    mostra_login(app)
 
 
 def mostra_login(app: QApplication):
-    """
-    Crea e mostra la finestra di login.
-    Può essere chiamata sia all'avvio che dopo un logout.
-    """
+    """Crea e mostra la finestra di login."""
     login_window = LoginWindow()
-
-    # Quando il login riesce, chiama avvia_dashboard.
-    # La lambda serve per passare anche 'app' come argomento aggiuntivo,
-    # perché il signal porta solo dati_utente ma avvia_dashboard ha bisogno
-    # anche di app.
     login_window.login_riuscito.connect(
         lambda dati: avvia_dashboard(dati, app)
     )
-
-    login_window.exec()   # exec() per i QDialog = mostra e aspetta che si chiuda
+    login_window.exec()
 
 
 def main():
-    """
-    Funzione principale — punto di partenza dell'esecuzione.
-
-    Convenzione Python: il codice "reale" va dentro main(), non a livello
-    del modulo. Questo permette di importare main.py da altri file
-    (es. per i test) senza eseguire tutto il programma.
-    """
-
-    # ── 1. Inizializza il database ───────────────────────────────────────────
-    # Crea le tabelle se non esistono. Sicuro da chiamare ogni volta —
-    # usa "CREATE TABLE IF NOT EXISTS" quindi non sovrascrive dati esistenti.
+    """Funzione principale dell'applicazione."""
+    
+    # 1. Inizializza il database
     try:
         inizializza_db()
     except Exception as e:
-        # Se il database non si inizializza, non possiamo andare avanti.
-        # Mostriamo un errore PRIMA di creare la QApplication non funziona,
-        # quindi usiamo print e usciamo.
-		print(f"[ERRORE CRITICO] Impossibile inizializzare il database: {e}")
-		sys.exit(1)   # codice 1 = uscita con errore
+        print(f"[ERRORE CRITICO] Impossibile inizializzare il database: {e}")
+        sys.exit(1)
 
-    # ── 2. Crea l'applicazione PyQt ──────────────────────────────────────────
-    # QApplication deve essere creata UNA SOLA VOLTA prima di qualsiasi
-    # widget. Gestisce il loop eventi, i font, il tema grafico.
-    # sys.argv passa gli argomenti da riga di comando a PyQt
-    # (es. per opzioni di debug).
+    # 2. Crea l'applicazione PyQt
     app = QApplication(sys.argv)
     app.setApplicationName(APP_TITOLO)
     app.setApplicationVersion(APP_VERSIONE)
 
+    # Gestione Lingua
+    from lingua.gestore import imposta_lingua
+    codice_lingua = mostra_scelta_lingua()
+    imposta_lingua(codice_lingua)
 
-  from lingua.gestore import imposta_lingua
-      codice_lingua = mostra_scelta_lingua()
-      imposta_lingua(codice_lingua)
-
-    # Font di default per tutta l'applicazione
+    # Font e Stile
     font = QFont("Arial", 11)
     app.setFont(font)
-
-    # Tema scuro minimale tramite stylesheet CSS
-    # PyQt accetta CSS (quasi) standard per lo stile dei widget.
-    # Questo è un tema base — in futuro puoi caricare un file .qss esterno.
     app.setStyleSheet("""
         QWidget {
             background-color: #282832;
@@ -234,9 +153,6 @@ def main():
             padding: 6px;
             color: #ffffff;
         }
-        QLineEdit:focus, QTextEdit:focus {
-            border-color: #8080c0;
-        }
         QPushButton {
             background-color: #5a5a90;
             border: none;
@@ -248,50 +164,22 @@ def main():
         QPushButton:hover {
             background-color: #6a6aa0;
         }
-        QPushButton:pressed {
-            background-color: #4a4a80;
-        }
-        QTabWidget::pane {
-            border: 1px solid #555570;
-        }
-        QTabBar::tab {
-            background-color: #3a3a4a;
-            padding: 8px 20px;
-            margin-right: 2px;
-        }
         QTabBar::tab:selected {
             background-color: #5a5a90;
         }
         QLabel {
             color: #cccccc;
         }
-        QMessageBox {
-            background-color: #282832;
-        }
     """)
 
-    # ── 3. Mostra il login ───────────────────────────────────────────────────
+    # 3. Mostra il login
     mostra_login(app)
 
-    # ── 4. Avvia il loop eventi PyQt ─────────────────────────────────────────
-    # app.exec() blocca qui finché tutte le finestre sono chiuse.
-    # Restituisce 0 se tutto è andato bene, altro in caso di errore.
+    # 4. Loop eventi
     codice_uscita = app.exec()
-
-    # ── 5. Cleanup e uscita ──────────────────────────────────────────────────
     print(f"[APP] Chiusura con codice {codice_uscita}")
     sys.exit(codice_uscita)
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
-# Questa è la convenzione Python per dire "esegui main() solo se questo
-# file viene eseguito direttamente, non se viene importato".
-#
-# Perché serve? Se un altro file fa "import main", Python esegue tutto
-# il codice a livello di modulo. Senza questo if, avvierebbe l'intera
-# app ogni volta che qualcuno importa main.py — un disastro.
-#
-# Con if __name__ == "__main__": il codice dentro viene eseguito SOLO
-# quando scrivi "python main.py" nel terminale.
 if __name__ == "__main__":
     main()

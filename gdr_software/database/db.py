@@ -301,5 +301,16 @@ def inizializza_db():
             )
         """)
 
+        # ── TILESET ATTIVI ────────────────────────────────────────────────────
+        # Tiene traccia di quale tileset ha attivato ogni utente.
+        # Default: tileset_base (gratuito).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tileset_attivi (
+                utente_id     INTEGER PRIMARY KEY,
+                tileset_id    TEXT    NOT NULL DEFAULT 'tileset_base',
+                FOREIGN KEY (utente_id) REFERENCES utenti(id)
+            )
+        """)
+
         conn.commit()
         print(f"[DB] Database inizializzato: {DB_PATH}")

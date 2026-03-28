@@ -435,3 +435,124 @@ PRESET_DIMENSIONI_SOTTOLIVELLO = {
     "grande_dungeon":        (1000, 800),  # Mega-dungeon
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  PRESET DIMENSIONI SOTTOLIVELLI
+# ─────────────────────────────────────────────────────────────────────────────
+PRESET_DIMENSIONI_SOTTOLIVELLO = {
+    "stanza":                (40,   30),
+    "sotterranei_piccoli":   (100,  80),
+    "sotterranei_castello":  (400, 300),
+    "dungeon":               (650, 500),
+    "grande_dungeon":        (1000, 800),
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  TILESET
+# ─────────────────────────────────────────────────────────────────────────────
+CARTELLA_TILESET_ROOT = os.path.join(CARTELLA_TERRENI)
+
+CATALOGO_TILESET = {
+    "tileset_base": {
+        "id":          "tileset_base",
+        "nome":        "Tileset Base",
+        "prezzo":      None,
+        "cartella":    os.path.join(CARTELLA_TILESET_ROOT, "tileset_base"),
+        "descrizione": "Terreni classici fantasy, incluso nel software.",
+    },
+    "tileset_advanced": {
+        "id":          "tileset_advanced",
+        "nome":        "Tileset Advanced",
+        "prezzo":      "0.99€",
+        "cartella":    os.path.join(CARTELLA_TILESET_ROOT, "tileset_advanced"),
+        "descrizione": "Terreni dettagliati ad alta risoluzione.",
+    },
+    "tileset_ice": {
+        "id":          "tileset_ice",
+        "nome":        "Tileset Ghiaccio",
+        "prezzo":      "0.99€",
+        "cartella":    os.path.join(CARTELLA_TILESET_ROOT, "tileset_ice"),
+        "descrizione": "Paesaggi innevati e ghiacciati.",
+    },
+    "tileset_fire": {
+        "id":          "tileset_fire",
+        "nome":        "Tileset Fuoco",
+        "prezzo":      "0.99€",
+        "cartella":    os.path.join(CARTELLA_TILESET_ROOT, "tileset_fire"),
+        "descrizione": "Terre vulcaniche e infernali.",
+    },
+    "tileset_dungeon": {
+        "id":          "tileset_dungeon",
+        "nome":        "Tileset Dungeon",
+        "prezzo":      "0.99€",
+        "cartella":    os.path.join(CARTELLA_TILESET_ROOT, "tileset_dungeon"),
+        "descrizione": "Pietre e mattoni per dungeon e sotterranei.",
+    },
+}
+
+
+def get_palette_con_tileset(tileset_id: str = "tileset_base") -> dict:
+    info     = CATALOGO_TILESET.get(tileset_id, CATALOGO_TILESET["tileset_base"])
+    cartella = info["cartella"]
+    palette  = {}
+    for nome, colore in TERRENI.items():
+        palette[nome] = {
+            "colore":           colore,
+            "cartella_tileset": cartella,
+        }
+    return palette
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  OGGETTI ESPLORABILI
+# ─────────────────────────────────────────────────────────────────────────────
+OGGETTI_ESPLORABILI = {
+    "casa_esplorabile": {
+        "id": "casa_esplorabile", "nome": "Casa (esplorabile)",
+        "layer": "struttura", "forma": [(0, 0)],
+        "colore": (230, 190, 140), "icona": "C+", "png": None,
+        "ha_sottolivello": True, "preset_sottolivello": "stanza",
+        "shop_id": "obj_casa_esplorabile", "prezzo": "0.49€",
+    },
+    "locanda_esplorabile": {
+        "id": "locanda_esplorabile", "nome": "Locanda (esplorabile)",
+        "layer": "struttura", "forma": [(0, 0), (1, 0)],
+        "colore": (200, 130, 60), "icona": "Lo+", "png": None,
+        "ha_sottolivello": True, "preset_sottolivello": "stanza",
+        "shop_id": "obj_locanda_esplorabile", "prezzo": "0.49€",
+    },
+    "torre_esplorabile": {
+        "id": "torre_esplorabile", "nome": "Torre (esplorabile)",
+        "layer": "struttura", "forma": [(0, 0), (0, 1)],
+        "colore": (160, 140, 120), "icona": "To+", "png": None,
+        "ha_sottolivello": True, "preset_sottolivello": "stanza",
+        "shop_id": "obj_torre_esplorabile", "prezzo": "0.49€",
+    },
+    "villaggio_esplorabile": {
+        "id": "villaggio_esplorabile", "nome": "Villaggio (esplorabile)",
+        "layer": "struttura", "forma": [(0, 0), (1, 0), (0, 1)],
+        "colore": (210, 160, 100), "icona": "Vi+", "png": None,
+        "ha_sottolivello": True, "preset_sottolivello": "sotterranei_piccoli",
+        "shop_id": "obj_villaggio_esplorabile", "prezzo": "0.99€",
+    },
+    "castello_esplorabile": {
+        "id": "castello_esplorabile", "nome": "Castello (esplorabile)",
+        "layer": "struttura", "forma": [(0, 0), (1, 0), (0, 1), (-1, 1)],
+        "colore": (130, 120, 110), "icona": "Cs+", "png": None,
+        "ha_sottolivello": True, "preset_sottolivello": "sotterranei_castello",
+        "shop_id": "obj_castello_esplorabile", "prezzo": "1.99€",
+    },
+    "dungeon_piccolo": {
+        "id": "dungeon_piccolo", "nome": "Dungeon piccolo",
+        "layer": "struttura", "forma": [(0, 0), (1, 0)],
+        "colore": (80, 60, 80), "icona": "Du", "png": None,
+        "ha_sottolivello": True, "preset_sottolivello": "sotterranei_piccoli",
+        "shop_id": "obj_dungeon_piccolo", "prezzo": "0.99€",
+    },
+    "dungeon_grande": {
+        "id": "dungeon_grande", "nome": "Dungeon grande",
+        "layer": "struttura", "forma": [(0, 0), (1, 0), (0, 1), (-1, 1)],
+        "colore": (60, 40, 60), "icona": "DG", "png": None,
+        "ha_sottolivello": True, "preset_sottolivello": "dungeon",
+        "shop_id": "obj_dungeon_grande", "prezzo": "1.99€",
+    },
+}

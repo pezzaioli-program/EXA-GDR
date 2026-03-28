@@ -311,6 +311,15 @@ def inizializza_db():
                 FOREIGN KEY (utente_id) REFERENCES utenti(id)
             )
         """)
+        
+                conn.execute("""
+            CREATE TABLE IF NOT EXISTS tileset_attivi (
+                utente_id     INTEGER PRIMARY KEY,
+                tileset_id    TEXT    NOT NULL DEFAULT 'tileset_base',
+                FOREIGN KEY (utente_id) REFERENCES utenti(id)
+            )
+        """)
+
 
         conn.commit()
         print(f"[DB] Database inizializzato: {DB_PATH}")

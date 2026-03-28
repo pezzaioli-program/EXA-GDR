@@ -312,7 +312,7 @@ def inizializza_db():
             )
         """)
         
-                conn.execute("""
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS tileset_attivi (
                 utente_id     INTEGER PRIMARY KEY,
                 tileset_id    TEXT    NOT NULL DEFAULT 'tileset_base',
